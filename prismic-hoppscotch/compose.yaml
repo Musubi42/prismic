@@ -1,0 +1,91 @@
+name: prismic-hoppscotch
+
+services:
+  hoppscotch-aio:
+    container_name: prismic-hoppscotch-aio
+    image: 'hoppscotch/hoppscotch'
+    networks:
+      - traefik-prismic-hoppscotch
+      - prismic-hoppscotch-aio
+    volumes:
+      - pw_backend:/usr/src/app/node_modules/
+    labels:
+      # Create http to https middleware
+      - 'traefik.enable=true'
+      - "traefik.docker.network=traefik-prismic-hoppscotch"
+      - 'traefik.http.middlewares.prismic-hoppscotch-redirect.redirectscheme.scheme=https'
+      - 'traefik.http.middlewares.prismic-hoppscotch-redirect.redirectscheme.permanent=true'
+      # cors middleware
+      - 'traefik.http.middlewares.prismic-cors-hoppscotch.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST'
+      - 'traefik.http.middlewares.prismic-cors-hoppscotch.headers.accesscontrolallowheaders=Content-Type, Authorization, X-Requested-With'
+      - 'traefik.http.middlewares.prismic-cors-hoppscotch.headers.accesscontrolallowcredentials=true'
+      - 'traefik.http.middlewares.prismic-cors-hoppscotch.headers.accesscontrolalloworiginlist=https://hoppscotch.prismic.fr,https://admin-hoppscotch.prismic.fr'
+      - 'traefik.http.middlewares.prismic-cors-hoppscotch.headers.accesscontrolmaxage=100'
+      - 'traefik.http.middlewares.prismic-cors-hoppscotch.headers.addvaryheader=true'
+      # front-end http route
+      - 'traefik.http.routers.prismic-hoppscotch-http.middlewares=prismic-hoppscotch-redirect'
+      - 'traefik.http.routers.prismic-hoppscotch-http.rule=Host(`hoppscotch.prismic.fr`)'
+      - 'traefik.http.routers.prismic-hoppscotch-http.entrypoints=web'
+      - 'traefik.http.routers.prismic-hoppscotch-http.service=prismic-hoppscotch-http'
+      - 'traefik.http.services.prismic-hoppscotch-http.loadbalancer.server.port=3000'
+      # front-end https route
+      - 'traefik.http.routers.prismic-hoppscotch-https.rule=Host(`hoppscotch.prismic.fr`)'
+      - 'traefik.http.routers.prismic-hoppscotch-https.entrypoints=websecure'
+      - 'traefik.http.routers.prismic-hoppscotch-https.tls=true'
+      - "traefik.http.routers.prismic-hoppscotch-https.tls.certresolver=letsencryptresolver"
+      - 'traefik.http.routers.prismic-hoppscotch-https.middlewares=prismic-cors-hoppscotch'
+      - 'traefik.http.services.prismic-hoppscotch-https.loadbalancer.server.port=3000'
+      - 'traefik.http.routers.prismic-hoppscotch-https.service=prismic-hoppscotch-https'
+      # admin dashboard https route
+      - 'traefik.http.routers.prismic-hoppscotch-admin.rule=Host(`admin-hoppscotch.prismic.fr`)'
+      - 'traefik.http.services.prismic-hoppscotch-admin.loadbalancer.server.port=3100'
+      - 'traefik.http.routers.prismic-hoppscotch-admin.entrypoints=websecure'
+      - 'traefik.http.routers.prismic-hoppscotch-admin.tls=true'
+      - "traefik.http.routers.prismic-hoppscotch-admin.tls.certresolver=letsencryptresolver"
+      - 'traefik.http.routers.prismic-hoppscotch-admin.service=hoppscotch-admin'
+      - 'traefik.http.routers.prismic-hoppscotch-admin.middlewares=prismic-cors-hoppscotch'
+      # back-end https route
+      - 'traefik.http.routers.prismic-hoppscotch-api.rule=Host(`api-hoppscotch.prismic.fr`)'
+      - 'traefik.http.services.prismic-hoppscotch-api.loadbalancer.server.port=3170'
+      - 'traefik.http.routers.prismic-hoppscotch-api.entrypoints=websecure'
+      - 'traefik.http.routers.prismic-hoppscotch-api.tls=true'
+      - "traefik.http.routers.prismic-hoppscotch-api.tls.certresolver=letsencryptresolver"
+      - 'traefik.http.routers.prismic-hoppscotch-api.service=prismic-hoppscotch-api'
+      - 'traefik.http.routers.prismic-hoppscotch-api.middlewares=prismic-cors-hoppscotch'
+    env_file:
+      - ./.env
+    depends_on:
+      hoppscotch-db:
+        condition: service_healthy
+    # ports:
+    #   - 3000:3000
+    #   - 3100:3100
+    #   - 3170:3170
+
+  hoppscotch-db:
+    image: postgres:15
+    container_name: prismic-hoppscotch-aio-db
+    # ports:
+    #   - 5432:5432
+    networks:
+      - prismic-hoppscotch-aio
+    volumes:
+      - pw_postgres_data:/var/lib/postgresql/data
+    env_file: ./.env
+    healthcheck:
+      test: "pg_isready --username=${POSTGRES_USER} --dbname=${POSTGRES_DB}"
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  pw_postgres_data:
+      driver: local
+  pw_backend:
+      driver: local
+
+networks:
+  traefik-prismic-hoppscotch:
+    external: true
+  prismic-hoppscotch-aio:
+    driver: bridge
