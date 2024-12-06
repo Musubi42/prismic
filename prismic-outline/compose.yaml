@@ -1,0 +1,98 @@
+name: prismic-outline
+
+services:
+  outline:
+    image: docker.getoutline.com/outlinewiki/outline:latest
+    container_name: prismic-outline
+    env_file: ./.env
+    volumes:
+      - ./volumes/storage-data:/var/lib/outline/data
+    networks:
+      - traefik-prismic-outline
+      - prismic-outline
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-prismic-outline"
+      - "traefik.http.routers.prismic-outline.rule=Host(`outline.prismic.fr`)"
+      - "traefik.http.routers.prismic-outline.entrypoints=websecure"
+      - "traefik.http.routers.prismic-outline.tls=true"
+      - "traefik.http.routers.prismic-outline.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.prismic-outline.loadbalancer.server.port=3000"
+    depends_on:
+      - postgres
+      - redis
+
+  redis:
+    image: redis
+    container_name: prismic-outline-redis
+    env_file: ./.env
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - ./volumes/redis.conf:/redis.conf
+    networks:
+      - prismic-outline
+    command: ["redis-server", "/redis.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  postgres:
+    image: postgres
+    container_name: prismic-outline-db
+    # env_file: ./.env
+    # ports:
+    #   - "5432:5432"
+    networks:
+      - prismic-outline
+    volumes:
+      - ./volumes/database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "outline", "-U", "user"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    env_file: ./.env
+    # environment:
+    #   - POSTGRES_USER=user
+    #   # - POSTGRES_PASSWORD=pass
+    #   - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+    #   - POSTGRES_DB=outline
+
+  # https-portal:
+  #   image: steveltn/https-portal
+  #   container_name: oim-outline-https-portal
+  #   env_file: ./.env
+  #   # ports:
+  #   #   - '80:80'
+  #   #   - '443:443'
+  #   links:
+  #     - outline
+  #   restart: always
+  #   volumes:
+  #     - https-portal-data:/var/lib/https-portal
+  #   healthcheck:
+  #     test: ["CMD", "service", "nginx", "status"]
+  #     interval: 30s
+  #     timeout: 20s
+  #     retries: 3
+  #   environment:
+  #     DOMAINS: 'docs.mycompany.com -> http://outline:3000'
+  #     STAGE: 'production'
+  #     WEBSOCKET: 'true'
+  #     CLIENT_MAX_BODY_SIZE: '0'
+
+# volumes:
+#   https-portal-data:
+#   storage-data:
+#   database-data:
+
+networks:  
+  traefik-prismic-outline:
+    name: traefik-prismic-outline
+    external: true
+  prismic-outline:
+    name: prismic-outline
+    driver: bridge
