@@ -1,0 +1,1 @@
+  docker exec 6711ee04df1a /bin/bash -c "python manage.py create_instance_admin prismiclightstorage@gmail.com"
