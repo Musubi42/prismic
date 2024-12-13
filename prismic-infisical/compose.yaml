@@ -1,0 +1,86 @@
+name: prismic-infisical
+
+services:
+  db-migration:
+    container_name: prismic-infisical-db-migration
+    depends_on:
+      db:
+        condition: service_healthy
+    image: infisical/infisical:latest-postgres
+    env_file: .env
+    command: npm run migration:latest
+    pull_policy: always
+    networks:
+      - prismic-infisical
+
+  backend:
+    container_name: prismic-infisical-backend
+    restart: unless-stopped
+    ports:
+      - 127.0.0.2:82:8080
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      db-migration:
+        condition: service_completed_successfully
+    image: infisical/infisical:latest-postgres
+    pull_policy: always
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+    networks:
+      - prismic-infisical
+      - traefik-prismic-infisical
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-prismic-infisical"
+      - "traefik.http.routers.prismic-infisical.rule=Host(`infisical.prismic.fr`)"
+      - "traefik.http.routers.prismic-infisical.entrypoints=websecure"
+      - "traefik.http.routers.prismic-infisical.tls=true"
+      - "traefik.http.routers.prismic-infisical.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.prismic-infisical.loadbalancer.server.port=8080"
+        
+  redis:
+    image: redis
+    container_name: prismic-infisical-dev-redis
+    env_file: .env
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    # ports:
+    #   - 6379:6379
+    networks:
+      - prismic-infisical
+    volumes:
+      - redis_data:/data
+
+  db:
+    container_name: prismic-infisical-db
+    image: postgres:14-alpine
+    restart: always
+    env_file: .env
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - prismic-infisical
+    healthcheck:
+      test: "pg_isready --username=${POSTGRES_USER} && psql --username=${POSTGRES_USER} --list"
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  pg_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  traefik-prismic-infisical:
+    name: traefik-prismic-infisical
+    external: true
+  prismic-infisical:
+    name: prismic-infisical
+    driver: bridge
+

@@ -1,0 +1,39 @@
+name: prismic-dockge
+
+services:
+  dockge:
+    container_name: prismic-dockge
+    image: louislam/dockge:1
+    restart: unless-stopped
+    # ports:
+      # Host Port : Container Port
+    # - 0001:5001
+    volumes:
+    # Pour ordonner tous les projets dans différents dossier, je peux utiliser les symlinks
+    # /opt/monorepo
+    # ln -s /opt/monorepo /opt/stacks/monorepo
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./volumes/data:/app/data
+      - /opt/epitech:/opt/epitech
+    networks:
+      - traefik-prismic-dockge
+      - traefik
+    environment:
+      # Tell Dockge where is your stacks directory
+      - DOCKGE_STACKS_DIR=/opt/epitech
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prismic-dockge.rule=Host(`dockge.prismic.fr`)
+      - traefik.http.routers.prismic-dockge.entrypoints=websecure
+      - traefik.http.routers.prismic-dockge.tls=true
+      - traefik.http.routers.prismic-dockge.tls.certresolver=letsencryptresolver
+      - traefik.http.services.prismic-dockge.loadbalancer.server.port=5001
+      # - traefik.http.routers.prismic-dockge.middlewares=prismic-authentik@docker
+
+networks:
+  traefik-prismic-dockge:
+    name: traefik-prismic-dockge
+    external: true
+  traefik:
+    name: traefik
+    external: true

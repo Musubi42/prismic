@@ -1,0 +1,90 @@
+name: prismic-seafile
+
+services:
+  db:
+    image: ${SEAFILE_DB_IMAGE:-mariadb:10.11}
+    container_name: prismic-seafile-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=${SEAFILE_MYSQL_ROOT_PASSWORD:?Variable is not set or empty}
+      - MYSQL_LOG_CONSOLE=true
+      - MARIADB_AUTO_UPGRADE=1
+    command: 
+      - --max_allowed_packet=64M
+      - --wait_timeout=28800
+    volumes:
+      - "./volumes/seafile-mysql/db:/var/lib/mysql"
+    networks:
+      # - prismic-seafile
+      - traefik-prismic-seafile
+
+  memcached:
+    image: ${SEAFILE_MEMCACHED_IMAGE:-memcached:1.6.29}
+    container_name: prismic-seafile-memcached
+    entrypoint: memcached -m 256
+    networks:
+      # - prismic-seafile
+      - traefik-prismic-seafile
+
+  seafile:
+    image: ${SEAFILE_IMAGE:-seafileltd/seafile-mc:12.0-latest}
+    container_name: prismic-seafile
+    ports:
+      - "8001:80"
+    volumes:
+      - ./volumes/seafile-data:/shared
+      # - ./volumes/seafile/conf:/opt/seafile/conf
+    environment:
+      - DB_HOST=${SEAFILE_MYSQL_DB_HOST:-db}
+      - DB_ROOT_PASSWD=${SEAFILE_MYSQL_ROOT_PASSWORD:?Variable is not set or empty}
+      - DB_PASSWORD=${SEAFILE_MYSQL_DB_PASSWORD:?Variable is not set or empty}
+      - TIME_ZONE=${TIME_ZONE:-Etc/UTC}
+      - SEAFILE_ADMIN_EMAIL=${SEAFILE_ADMIN_EMAIL:-me@example.com}
+      - SEAFILE_ADMIN_PASSWORD=${SEAFILE_ADMIN_PASSWORD:-asecret}
+      - SEAFILE_SERVER_HOSTNAME=${SEAFILE_SERVER_HOSTNAME:?Variable is not set or empty}
+      - SEAFILE_SERVER_PROTOCOL=${SEAFILE_SERVER_PROTOCOL:-http}
+      - SITE_ROOT=${SITE_ROOT:-/}
+      - JWT_PRIVATE_KEY=${JWT_PRIVATE_KEY:?Variable is not set or empty}
+      - ENABLE_SEADOC=${ENABLE_SEADOC:-false}
+      - SEADOC_SERVER_URL=${SEADOC_SERVER_URL:-http://example.example.com/sdoc-server}
+      - DEBUG=true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-prismic-seafile"
+      # Main router
+      - "traefik.http.routers.prismic-seafile.rule=Host(`seafile.prismic.fr`)"
+      - "traefik.http.routers.prismic-seafile.entrypoints=websecure"
+      - "traefik.http.routers.prismic-seafile.tls=true"
+      - "traefik.http.routers.prismic-seafile.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.prismic-seafile.loadbalancer.server.port=80"
+      
+      # File server
+      - "traefik.http.routers.prismic-seafile-fileserver.rule=Host(`seafile.prismic.fr`) && PathPrefix(`/seafhttp`)"
+      - "traefik.http.routers.prismic-seafile-fileserver.entrypoints=websecure"
+      - "traefik.http.routers.prismic-seafile-fileserver.tls=true"
+      - "traefik.http.routers.prismic-seafile-fileserver.service=prismic-seafile"
+      
+      # WebDAV
+      - "traefik.http.routers.prismic-seafile-webdav.rule=Host(`seafile.prismic.fr`) && PathPrefix(`/seafdav`)"
+      - "traefik.http.routers.prismic-seafile-webdav.entrypoints=websecure"
+      - "traefik.http.routers.prismic-seafile-webdav.tls=true"
+      - "traefik.http.routers.prismic-seafile-webdav.service=prismic-seafile"
+      
+      # Security headers
+      - "traefik.http.middlewares.prismic-seafile-security.headers.customresponseheaders.X-Frame-Options=SAMEORIGIN"
+      - "traefik.http.middlewares.prismic-seafile-security.headers.customresponseheaders.X-XSS-Protection=1; mode=block"
+      - "traefik.http.middlewares.prismic-seafile-security.headers.customresponseheaders.X-Content-Type-Options=nosniff"
+      - "traefik.http.middlewares.prismic-seafile-security.headers.customresponseheaders.Referrer-Policy=strict-origin-when-cross-origin"
+      - "traefik.http.routers.prismic-seafile.middlewares=prismic-seafile-security"
+    depends_on:
+      - db
+      - memcached
+    networks:
+      - traefik-prismic-seafile
+      # - prismic-seafile
+
+networks:
+  prismic-seafile:
+    driver: bridge
+  traefik-prismic-seafile:
+    name: traefik-prismic-seafile
+    external: true

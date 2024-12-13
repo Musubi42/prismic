@@ -1,0 +1,34 @@
+name: prismic-homarr
+
+services:
+  homarr:
+    container_name: prismic-homarr
+    image: ghcr.io/ajnart/homarr:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Optional, only if you want docker integration
+      - ./volumes/configs:/app/data/configs
+      - ./volumes/icons:/app/public/icons
+      - ./volumes/data:/data
+      - ./volumes/logo:/app/public/imgs/logo
+    networks:
+      - traefik-prismic-homarr
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-prismic-homarr"
+      - "traefik.http.routers.prismic-homarr.rule=Host(`dashboard.prismic.fr`)"
+      - "traefik.http.routers.prismic-homarr.entrypoints=websecure"
+      - "traefik.http.routers.prismic-homarr.tls=true"
+      - "traefik.http.routers.prismic-homarr.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.prismic-homarr.loadbalancer.server.port=7575"
+      # - "traefik.http.routers.prismic-homarr.middlewares=prismic-authentik"
+      ## Middlewares
+      # - "traefik.http.routers.whoami-test-rtr.middlewares=middlewares-authentik@file"
+    restart: unless-stopped
+    
+networks:
+  traefik-prismic-homarr:
+    name: traefik-prismic-homarr
+    external: true
+  traefik:
+    external: true

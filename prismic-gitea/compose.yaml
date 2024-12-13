@@ -1,0 +1,181 @@
+
+  # traefik:
+  #   image: ${TRAEFIK_IMAGE_TAG}
+  #   command:
+  #     - "--log.level=${TRAEFIK_LOG_LEVEL}"
+  #     - "--accesslog=true"
+  #     - "--api.dashboard=true"
+  #     - "--api.insecure=true"
+  #     - "--ping=true"
+  #     - "--ping.entrypoint=ping"
+  #     - "--entryPoints.ping.address=:8082"
+  #     - "--entryPoints.web.address=:80"
+  #     - "--entryPoints.websecure.address=:443"
+  #     - "--entryPoints.ssh.address=:${GITEA_SHELL_SSH_PORT}"
+  #     - "--providers.docker=true"
+  #     - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+  #     - "--providers.docker.exposedByDefault=false"
+  #     - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+  #     - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}"
+  #     - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json"
+  #     - "--metrics.prometheus=true"
+  #     - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
+  #     - "--global.checkNewVersion=true"
+  #     - "--global.sendAnonymousUsage=false"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - traefik-certificates:/etc/traefik/acme
+  #   networks:
+  #     - traefik-network
+  #   ports:
+  #     - "${GITEA_SHELL_SSH_PORT}:${GITEA_SHELL_SSH_PORT}"
+  #     - "80:80"
+  #     - "443:443"
+  #   healthcheck:
+  #     test: ["CMD", "wget", "http://localhost:8082/ping","--spider"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 5s
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.dashboard.rule=Host(`${TRAEFIK_HOSTNAME}`)"
+  #     - "traefik.http.routers.dashboard.service=api@internal"
+  #     - "traefik.http.routers.dashboard.entrypoints=websecure"
+  #     - "traefik.http.services.dashboard.loadbalancer.server.port=8080"
+  #     - "traefik.http.routers.dashboard.tls=true"
+  #     - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+  #     - "traefik.http.services.dashboard.loadbalancer.passhostheader=true"
+  #     - "traefik.http.routers.dashboard.middlewares=authtraefik"
+  #     - "traefik.http.middlewares.authtraefik.basicauth.users=${TRAEFIK_BASIC_AUTH}"
+  #     - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
+  #     - "traefik.http.routers.http-catchall.entrypoints=web"
+  #     - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+  #     - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+  #   restart: unless-stopped
+
+name: prismic-gitea
+
+services:
+  postgres:
+    image: ${GITEA_POSTGRES_IMAGE_TAG}
+    container_name: prismic-gitea-postgres
+    volumes:
+      - prismic-gitea-postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${GITEA_DB_NAME}
+      POSTGRES_USER: ${GITEA_DB_USER}
+      POSTGRES_PASSWORD: ${GITEA_DB_PASSWORD}
+    networks:
+      - prismic-gitea
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "${GITEA_DB_NAME}", "-U", "${GITEA_DB_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  gitea:
+    image: ${GITEA_IMAGE_TAG}
+    container_name: prismic-gitea
+    volumes:
+      - prismic-gitea-data:/${DATA_PATH}
+      # - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      GITEA_DATABASE_HOST: postgres
+      GITEA_DATABASE_NAME: ${GITEA_DB_NAME}
+      GITEA_DATABASE_USERNAME: ${GITEA_DB_USER}
+      GITEA_DATABASE_PASSWORD: ${GITEA_DB_PASSWORD}
+      GITEA_ADMIN_USER: ${GITEA_ADMIN_USERNAME}
+      GITEA_ADMIN_PASSWORD: ${GITEA_ADMIN_PASSWORD}
+      GITEA_ADMIN_EMAIL: ${GITEA_ADMIN_EMAIL}
+      GITEA_RUN_MODE: prod
+      GITEA_DOMAIN: ${GITEA_HOSTNAME}
+      GITEA_SSH_DOMAIN: ${GITEA_HOSTNAME}
+      GITEA_ROOT_URL: ${GITEA_URL}
+      GITEA_HTTP_PORT: 3000
+      GITEA_SSH_PORT: ${GITEA_SHELL_SSH_PORT}
+      GITEA_SSH_LISTEN_PORT: 22
+    networks:
+      - prismic-gitea
+      - traefik-prismic-gitea
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-prismic-gitea"
+      - "traefik.http.routers.prismic-gitea.rule=Host(`${GITEA_HOSTNAME}`)"
+      - "traefik.http.routers.prismic-gitea.service=prismic-gitea"
+      - "traefik.http.routers.prismic-gitea.entrypoints=websecure"
+      - "traefik.http.services.prismic-gitea.loadbalancer.server.port=3000"
+      - "traefik.http.routers.prismic-gitea.tls=true"
+      - "traefik.http.routers.prismic-gitea.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.prismic-gitea.loadbalancer.passhostheader=true"
+      - "traefik.http.routers.prismic-gitea.middlewares=compresstraefik"
+      - "traefik.http.middlewares.compresstraefik.compress=true"
+
+      - "traefik.tcp.routers.prismic-gitea-ssh.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.prismic-gitea-ssh.service=prismic-gitea-ssh"
+      - "traefik.tcp.routers.prismic-gitea-ssh.entrypoints=ssh"
+      - "traefik.tcp.services.prismic-gitea-ssh.loadbalancer.server.port=22"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # backups:
+  #   image: ${GITEA_POSTGRES_IMAGE_TAG}
+  #   container_name: oim-gitea-backups
+  #   command: >-
+  #     sh -c 'sleep $BACKUP_INIT_SLEEP &&
+  #     while true; do
+  #       pg_dump -h postgres -p 5432 -d $GITEA_DB_NAME -U $GITEA_DB_USER | gzip > $POSTGRES_BACKUPS_PATH/$POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
+  #       tar -zcpf $DATA_BACKUPS_PATH/$DATA_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").tar.gz $DATA_PATH &&
+  #       find $POSTGRES_BACKUPS_PATH -type f -mtime +$POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
+  #       find $DATA_BACKUPS_PATH -type f -mtime +$DATA_BACKUP_PRUNE_DAYS | xargs rm -f;
+  #       sleep $BACKUP_INTERVAL; done'
+  #   volumes:
+  #     - gitea-postgres-backup:/var/lib/postgresql/data
+  #     - gitea-data:${DATA_PATH}
+  #     - gitea-data-backups:${DATA_BACKUPS_PATH}
+  #     - gitea-database-backups:${POSTGRES_BACKUPS_PATH}
+  #   environment:
+  #     GITEA_DB_NAME: ${GITEA_DB_NAME}
+  #     GITEA_DB_USER: ${GITEA_DB_USER}
+  #     PGPASSWORD: ${GITEA_DB_PASSWORD}
+  #     BACKUP_INIT_SLEEP: ${BACKUP_INIT_SLEEP}
+  #     BACKUP_INTERVAL: ${BACKUP_INTERVAL}
+  #     POSTGRES_BACKUP_PRUNE_DAYS: ${POSTGRES_BACKUP_PRUNE_DAYS}
+  #     DATA_BACKUP_PRUNE_DAYS: ${DATA_BACKUP_PRUNE_DAYS}
+  #     POSTGRES_BACKUPS_PATH: ${POSTGRES_BACKUPS_PATH}
+  #     DATA_BACKUPS_PATH: ${DATA_BACKUPS_PATH}
+  #     DATA_PATH: ${DATA_PATH}
+  #     POSTGRES_BACKUP_NAME: ${POSTGRES_BACKUP_NAME}
+  #     DATA_BACKUP_NAME: ${DATA_BACKUP_NAME}
+  #   networks:
+  #     - oim-gitea
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+        
+networks:
+  prismic-gitea:
+    driver: bridge
+  traefik-prismic-gitea:
+    name: traefik-prismic-gitea
+    external: true
+
+volumes:
+  prismic-gitea-data:
+  prismic-gitea-postgres:
+  prismic-gitea-postgres-backup:
+  prismic-gitea-data-backups:
+  prismic-gitea-database-backups:
+  # traefik-certificates:

@@ -1,0 +1,92 @@
+name: oim-passbolt
+
+services:
+  db:
+    image: mariadb:10.11
+    container_name: oim-passbolt-db
+    restart: unless-stopped
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "true"
+      MYSQL_DATABASE: "passbolt"
+      MYSQL_USER: "passbolt"
+      MYSQL_PASSWORD: ""
+    networks:
+      - oim-passbolt
+    volumes:
+      - database_volume:/var/lib/mysql
+
+  passbolt:
+    image: passbolt/passbolt:latest-ce
+    container_name: oim-passbolt
+    #Alternatively you can use rootless:
+    #image: passbolt/passbolt:latest-ce-non-root
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      APP_FULL_BASE_URL: https://passbolt.musubi.dev
+      DATASOURCES_DEFAULT_HOST: "db"
+      DATASOURCES_DEFAULT_USERNAME: "passbolt"
+      DATASOURCES_DEFAULT_PASSWORD: ""
+      DATASOURCES_DEFAULT_DATABASE: "passbolt"
+      PASSBOLT_PLUGINS_SSO_PROVIDER_OAUHT2_ENABLED: true
+    networks:
+      - traefik-oim-passbolt
+      - oim-passbolt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-oim-passbolt"
+      - "traefik.http.routers.passbolt-http.entrypoints=web"
+      - "traefik.http.routers.passbolt-http.rule=Host(`passbolt.domain.tld`)"
+      - "traefik.http.routers.passbolt-http.middlewares=SslHeader@file"
+      - "traefik.http.routers.traefik-oim-passbolt.rule=Host(`passbolt.musubi.dev`)"
+      - "traefik.http.routers.traefik-oim-passbolt.entrypoints=websecure"
+      - "traefik.http.routers.traefik-oim-passbolt.tls=true"
+      - "traefik.http.routers.traefik-oim-passbolt.tls.certresolver=letsencryptresolver"
+      # - "traefik.http.services.traefik-oim-passbolt.loadbalancer.server.port=8080"
+      - "traefik.http.middlewares.SslHeader.headers.framedeny=true"
+      - "traefik.http.middlewares.SslHeader.headers.accessControlAllowMethods=GET,OPTIONS,PUT"
+      - "traefik.http.middlewares.SslHeader.headers.accessControlAllowOriginList=origin-list-or-null"
+      - "traefik.http.middlewares.SslHeader.headers.accessControlMaxAge=100"
+      - "traefik.http.middlewares.SslHeader.headers.addVaryHeader=true"
+      - "traefik.http.middlewares.SslHeader.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.SslHeader.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.SslHeader.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.SslHeader.headers.STSIncludeSubdomains=true"
+      - "traefik.http.middlewares.SslHeader.headers.STSPreload=true"
+      - "traefik.http.middlewares.SslHeader.headers.contentSecurityPolicy=default-src 'self' 'unsafe-inline'"
+      - "traefik.http.middlewares.SslHeader.headers.customFrameOptionsValue=SAMEORIGIN"
+      - "traefik.http.middlewares.SslHeader.headers.referrerPolicy=same-origin"
+      - "traefik.http.middlewares.SslHeader.headers.permissionsPolicy=vibrate 'self'"
+      - "traefik.http.middlewares.SslHeader.headers.STSSeconds=315360000"
+
+    volumes:
+      - gpg_volume:/etc/passbolt/gpg
+      - jwt_volume:/etc/passbolt/jwt
+    command:
+      [
+        "/usr/bin/wait-for.sh",
+        "-t",
+        "0",
+        "db:3306",
+        "--",
+        "/docker-entrypoint.sh",
+      ]
+    # ports:
+    #   - 80:80
+    #   - 443:443
+    #Alternatively for non-root images:
+    # - 80:8080
+    # - 443:4433
+
+volumes:
+  database_volume:
+  gpg_volume:
+  jwt_volume:
+
+networks:
+  traefik-oim-passbolt:
+    name: traefik-oim-passbolt
+    external: true
+  oim-passbolt:
+    driver: bridge

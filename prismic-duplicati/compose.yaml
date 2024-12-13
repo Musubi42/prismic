@@ -1,0 +1,35 @@
+name: prismic-duplicati
+
+services:
+  duplicati:
+    image: lscr.io/linuxserver/duplicati:latest
+    container_name: prismic-duplicati
+    env_file: .env
+    volumes:
+      - ./appdata/config:/config
+      - ./backups:/backups
+      - /opt/epitech:/source
+    restart: unless-stopped
+    networks:
+      - traefik-prismic-duplicati
+      # - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-prismic-duplicati"
+      - "traefik.port=8200"
+      - "traefik.http.routers.prismic-duplicati.rule=Host(`duplicati.prismic.fr`)"
+      - "traefik.http.routers.prismic-duplicati.entrypoints=websecure"
+      - "traefik.http.routers.prismic-duplicati.tls=true"
+      - "traefik.http.routers.prismic-duplicati.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.prismic-duplicati.loadbalancer.server.port=8200"
+
+
+networks:
+  traefik-prismic-duplicati:
+    name: traefik-prismic-duplicati
+    external: true
+  # internal:
+  #   driver: overlay
+  #   ipam:
+  #     config:
+  #       - subnet: 172.16.55.0/24

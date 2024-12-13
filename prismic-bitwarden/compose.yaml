@@ -1,0 +1,88 @@
+name: prismic-bitwarden
+
+services:
+  bitwarden:
+    # image: ${REGISTRY:-bitwarden}/self-host:${TAG:-beta}
+    image: bitwarden/self-host:2024.11.0-beta
+    container_name: prismic-bitwarden
+    restart: unless-stopped
+    # ports:
+    #   - "80:8080"
+    #   - "443:8443"
+    volumes:
+      - .volumes/bitwarden:/etc/bitwarden
+      - .volumes/logs:/var/log/bitwarden
+    depends_on:
+      - db
+    env_file:
+      - settings.env
+    networks:
+      - traefik-prismic-bitwarden
+      - prismic-bitwarden
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-prismic-bitwarden"
+      # Middleware
+      # - 'traefik.http.middlewares.prismic-bitwarden-redirect.redirectscheme.scheme=https'
+      # - 'traefik.http.middlewares.prismic-bitwarden-redirect.redirectscheme.permanent=true'
+      # # HTTP to HTTPS redirect
+      # - "traefik.http.routers.prismic-bitwarden-http.rule=Host(`bitwarden.prismic.fr`)"
+      # - "traefik.http.routers.prismic-bitwarden-http.entrypoints=web"
+      # - "traefik.http.services.prismic-bitwarden.loadbalancer.server.port=8080"
+      # - "traefik.http.routers.prismic-bitwarden-http.middlewares=prismic-bitwarden-redirect"
+      # HTTPS
+      - "traefik.http.routers.prismic-bitwarden.rule=Host(`bitwarden.prismic.fr`)"
+      - "traefik.http.routers.prismic-bitwarden.entrypoints=websecure"
+      - "traefik.http.routers.prismic-bitwarden.tls=true"
+      - "traefik.http.routers.prismic-bitwarden.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.prismic-bitwarden.loadbalancer.server.port=8080"
+
+  # MariaDB Example
+  db:
+    image: mariadb:10
+    container_name: prismic-bitwarden-db
+    environment:
+      MARIADB_USER: "bitwarden"
+      MARIADB_PASSWORD: ""
+      MARIADB_DATABASE: "bitwarden_vault"
+      MARIADB_RANDOM_ROOT_PASSWORD: "true"
+    restart: unless-stopped
+    volumes:
+      - .volumes/data:/var/lib/mysql
+    networks:
+      - prismic-bitwarden
+
+  # PostgreSQL Example
+  # db:
+  #   environment:
+  #     POSTGRES_USER: "bitwarden"
+  #     POSTGRES_PASSWORD: "super_strong_password"
+  #     POSTGRES_DB: "bitwarden_vault"
+  #   image: postgres:14
+  #   restart: always
+  #   volumes:
+  #     - data:/var/lib/postgresql/data
+
+  # MS SQL Server Example
+  # Docs: https://learn.microsoft.com/en-us/sql/linux/sql-server-linux-docker-container-deployment
+  # db:
+  #   environment:
+  #     MSSQL_SA_PASSWORD: "super_strong_password"
+  #     ACCEPT_EULA: Y
+  #   image: mcr.microsoft.com/mssql/server:2019-latest
+  #   restart: always
+  #   volumes:
+  #     - data:/var/opt/mssql
+
+# volumes:
+#   bitwarden:
+#   logs:
+#   data:
+
+networks:
+  traefik-prismic-bitwarden:
+    name: traefik-prismic-bitwarden
+    external: true
+  prismic-bitwarden:
+    driver: bridge
+  
